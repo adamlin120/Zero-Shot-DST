@@ -1,9 +1,11 @@
 # Copyright (c) Facebook, Inc. and its affiliates
 
 import json
+
 # Strict match evaluation from https://github.com/jasonwu0731/trade-dst/blob/master/models/TRADE.py
 # check utils/prediction_sample.json for the format of predictions
 EXPERIMENT_DOMAINS = ["hotel", "train", "restaurant", "attraction", "taxi"]
+
 
 def compute_acc(gold, pred, slot_temp):
     miss_gold = 0
@@ -21,9 +23,10 @@ def compute_acc(gold, pred, slot_temp):
     ACC = ACC / float(ACC_TOTAL)
     return ACC
 
+
 def compute_prf(gold, pred):
     TP, FP, FN = 0, 0, 0
-    if len(gold)!= 0:
+    if len(gold) != 0:
         count = 1
         for g in gold:
             if g in pred:
@@ -33,15 +36,16 @@ def compute_prf(gold, pred):
         for p in pred:
             if p not in gold:
                 FP += 1
-        precision = TP / float(TP+FP) if (TP+FP)!=0 else 0
-        recall = TP / float(TP+FN) if (TP+FN)!=0 else 0
-        F1 = 2 * precision * recall / float(precision + recall) if (precision+recall)!=0 else 0
+        precision = TP / float(TP + FP) if (TP + FP) != 0 else 0
+        recall = TP / float(TP + FN) if (TP + FN) != 0 else 0
+        F1 = 2 * precision * recall / float(precision + recall) if (precision + recall) != 0 else 0
     else:
-        if len(pred)==0:
+        if len(pred) == 0:
             precision, recall, F1, count = 1, 1, 1, 1
         else:
             precision, recall, F1, count = 0, 0, 0, 1
     return F1, recall, precision, count
+
 
 def evaluate_metrics(all_prediction, SLOT_LIST):
     total, turn_acc, joint_acc, F1_pred, F1_count = 0, 0, 0, 0, 0
@@ -64,15 +68,17 @@ def evaluate_metrics(all_prediction, SLOT_LIST):
             F1_pred += temp_f1
             F1_count += count
 
-    joint_acc_score = joint_acc / float(total) if total!=0 else 0
-    turn_acc_score = turn_acc / float(total) if total!=0 else 0
-    F1_score = F1_pred / float(F1_count) if F1_count!=0 else 0
+    joint_acc_score = joint_acc / float(total) if total != 0 else 0
+    turn_acc_score = turn_acc / float(total) if total != 0 else 0
+    F1_score = F1_pred / float(F1_count) if F1_count != 0 else 0
     return joint_acc_score, F1_score, turn_acc_score
+
 
 def get_slot_information(ontology):
     ontology_domains = dict([(k, v) for k, v in ontology.items() if k.split("-")[0] in EXPERIMENT_DOMAINS])
-    SLOTS = [k.replace(" ","").lower() if ("book" not in k) else k.lower() for k in ontology_domains.keys()]
+    SLOTS = [k.replace(" ", "").lower() if ("book" not in k) else k.lower() for k in ontology_domains.keys()]
     return SLOTS
+
 
 if __name__ == "__main__":
     ontology = json.load(open("data/multi-woz/MULTIWOZ2 2/ontology.json", 'r'))
@@ -82,5 +88,5 @@ if __name__ == "__main__":
 
     joint_acc_score, F1_score, turn_acc_score = evaluate_metrics(prediction, ontology)
 
-    evaluation_metrics = {"Joint Acc":joint_acc_score, "Turn Acc":turn_acc_score, "Joint F1":F1_score}
+    evaluation_metrics = {"Joint Acc": joint_acc_score, "Turn Acc": turn_acc_score, "Joint F1": F1_score}
     print(evaluation_metrics)

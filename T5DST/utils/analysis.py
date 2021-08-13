@@ -1,35 +1,26 @@
 # Copyright (c) Facebook, Inc. and its affiliates
 
-import os, random
-import torch
-import argparse
 import pytorch_lightning as pl
-from pytorch_lightning import Trainer, seed_everything
-from transformers import (AdamW, T5Tokenizer,  T5ForConditionalGeneration)
-from data_loader import prepare_data
+import torch
 from config import get_args
-from evaluate import evaluate_metrics
-import json
-from tqdm import tqdm
-from copy import deepcopy
-import numpy as np
-from collections import Counter
+from data_loader import prepare_data
+from transformers import (AdamW, T5Tokenizer, T5ForConditionalGeneration)
+
 
 class DST_Seq2Seq(pl.LightningModule):
 
-    def __init__(self,args, tokenizer, model):
+    def __init__(self, args, tokenizer, model):
         super().__init__()
         self.tokenizer = tokenizer
         self.model = model
         self.lr = args["lr"]
 
-
     def training_step(self, batch, batch_idx):
         self.model.train()
         (loss), *_ = self.model(input_ids=batch["encoder_input"],
-                            attention_mask=batch["attention_mask"],
-                            lm_labels=batch["decoder_output"]
-                            )
+                                attention_mask=batch["attention_mask"],
+                                lm_labels=batch["decoder_output"]
+                                )
 
         # result = pl.TrainResult(loss)
         # result.log('train_loss', loss, on_epoch=True)
@@ -39,10 +30,9 @@ class DST_Seq2Seq(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         self.model.eval()
         (loss), *_ = self.model(input_ids=batch["encoder_input"],
-                            attention_mask=batch["attention_mask"],
-                            lm_labels=batch["decoder_output"]
-                            )
-
+                                attention_mask=batch["attention_mask"],
+                                lm_labels=batch["decoder_output"]
+                                )
 
         return {'val_loss': loss, 'log': {'val_loss': loss}}
         # return result
@@ -57,21 +47,26 @@ class DST_Seq2Seq(pl.LightningModule):
     def configure_optimizers(self):
         return AdamW(self.parameters(), lr=self.lr, correct_bias=True)
 
+
 def analysis(args):
     args = vars(args)
     # args["model_checkpoint"] = "trained/t5-smallt5_except_domain_train_slotlang_rule2_lr_0.0001_epoch_5_seed_555"
     model = T5ForConditionalGeneration.from_pretrained(args["model_checkpoint"])
-    tokenizer = T5Tokenizer.from_pretrained(args["model_checkpoint"], bos_token="[bos]", eos_token="[eos]", sep_token="[sep]")
+    tokenizer = T5Tokenizer.from_pretrained(args["model_checkpoint"], bos_token="[bos]", eos_token="[eos]",
+                                            sep_token="[sep]")
     model.resize_token_embeddings(new_num_tokens=len(tokenizer))
-    train_loader, val_loader, test_loader, ALL_SLOTS, fewshot_loader_dev, fewshot_loader_test = prepare_data(args, tokenizer)
+    train_loader, val_loader, test_loader, ALL_SLOTS, fewshot_loader_dev, fewshot_loader_test = prepare_data(args,
+                                                                                                             tokenizer)
     device = torch.device("cuda:0")
 
-    # model.load_state_dict(torch.load("trained/t5-smallt5_except_domain_train_slotlang_none_lr_0.0001_epoch_5_seed_555/pytorch_model.bin"))
+    # model.load_state_dict(torch.load(
+    # "trained/t5-smallt5_except_domain_train_slotlang_none_lr_0.0001_epoch_5_seed_555/pytorch_model.bin"))
     model.to(device)
     model.eval()
     count = 0
     for batch in test_loader:
-        decoder_input = torch.full((batch["encoder_input"].shape[0], 1), model.config.decoder_start_token_id, dtype=torch.long, device=device)
+        decoder_input = torch.full((batch["encoder_input"].shape[0], 1), model.config.decoder_start_token_id,
+                                   dtype=torch.long, device=device)
 
         # dst_outputs = model.generate(input_ids=batch["encoder_input"].to(device),
         #                         attention_mask=batch["attention_mask"].to(device),
@@ -88,7 +83,7 @@ def analysis(args):
                         return_dict=True,
                         output_attentions=True,
                         )
-        if batch["value_text"][0]!="none":
+        if batch["value_text"][0] != "none":
             print(batch["intput_text"][0])
             tokens = tokenizer.convert_ids_to_tokens(batch["encoder_input"][0])
             max_id = torch.argmax(torch.sum(outputs.cross_attentions[1], 1).squeeze()).item()
@@ -98,23 +93,18 @@ def analysis(args):
             for i in range(len(tokens)):
                 bukets.append((tokens[i], weights[i]))
             # bukets.sort(key=lambda x: x[1])
-            print(bukets[max(max_id-1,0)])
+            print(bukets[max(max_id - 1, 0)])
             print(bukets[max_id])
-            print(bukets[max_id+1])
-            count+=1
-            if count>30:
+            print(bukets[max_id + 1])
+            count += 1
+            if count > 30:
                 exit(0)
-
 
         # print(batch["encoder_input"].shape)
         # torch.sum(outputs.cross_attentions[0], 1).squeeze().cpu().tolist()
-        #print(torch.sum(outputs.cross_attentions[0], 1).squeeze().cpu().tolist())
+        # print(torch.sum(outputs.cross_attentions[0], 1).squeeze().cpu().tolist())
 
-        #print(torch.sum(outputs.cross_attentions[1], 1).squeeze())
-
-
-
-
+        # print(torch.sum(outputs.cross_attentions[1], 1).squeeze())
 
 
 if __name__ == "__main__":
