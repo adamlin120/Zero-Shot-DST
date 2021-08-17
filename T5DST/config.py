@@ -15,7 +15,7 @@ def get_args():
         "--saving_dir", type=str, default="save", help="Path for saving"
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size for training"
+        "--train_batch_size", type=int, default=32, help="Batch size for training"
     )
     parser.add_argument(
         "--meta_batch_size", type=int, default=1, help="Batch size for meta training"
@@ -52,7 +52,7 @@ def get_args():
     parser.add_argument(
         "--slot_lang",
         type=str,
-        default="none",
+        default="human",
         help="use 'none', 'human', 'naive', 'value', 'question', 'slottype' slot description",
     )
     parser.add_argument(

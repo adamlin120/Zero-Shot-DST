@@ -10,13 +10,7 @@ from data_loader import prepare_data
 from evaluate import evaluate_metrics
 from pytorch_lightning import Trainer, seed_everything
 from tqdm import tqdm
-from transformers import (
-    AdamW,
-    BartForConditionalGeneration,
-    BartTokenizer,
-    T5ForConditionalGeneration,
-    T5Tokenizer,
-)
+from transformers import AdamW, AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 class DST_Seq2Seq(pl.LightningModule):
@@ -26,29 +20,23 @@ class DST_Seq2Seq(pl.LightningModule):
         self.model = model
         self.lr = args["lr"]
 
-    def training_step(self, batch, batch_idx):
-        self.model.train()
-        (loss), *_ = self.model(
+    def forward(self, batch, *args, **kwargs):
+        return self.model(
             input_ids=batch["encoder_input"],
             attention_mask=batch["attention_mask"],
             lm_labels=batch["decoder_output"],
         )
 
+    def training_step(self, batch, batch_idx):
+        (loss), *_ = self.forward(batch)
         return {"loss": loss, "log": {"train_loss": loss}}
 
     def validation_step(self, batch, batch_idx):
-        self.model.eval()
-        (loss), *_ = self.model(
-            input_ids=batch["encoder_input"],
-            attention_mask=batch["attention_mask"],
-            lm_labels=batch["decoder_output"],
-        )
-
+        (loss), *_ = self.forward(batch)
         return {"val_loss": loss, "log": {"val_loss": loss}}
 
     def validation_epoch_end(self, outputs):
         val_loss_mean = sum([o["val_loss"] for o in outputs]) / len(outputs)
-        # show val_loss in progress bar but only log val_loss
         results = {
             "progress_bar": {"val_loss": val_loss_mean.item()},
             "log": {"val_loss": val_loss_mean.item()},
@@ -60,7 +48,7 @@ class DST_Seq2Seq(pl.LightningModule):
         return AdamW(self.parameters(), lr=self.lr, correct_bias=True)
 
 
-def train(args, *more):
+def train(args):
     args = vars(args)
     args["model_name"] = (
         args["model_checkpoint"]
@@ -76,27 +64,16 @@ def train(args, *more):
         + "_seed_"
         + str(args["seed"])
     )
-    # train!
     seed_everything(args["seed"])
 
-    if "t5" in args["model_name"]:
-        model = T5ForConditionalGeneration.from_pretrained(args["model_checkpoint"])
-        tokenizer = T5Tokenizer.from_pretrained(
-            args["model_checkpoint"],
-            bos_token="[bos]",
-            eos_token="[eos]",
-            sep_token="[sep]",
-        )
-        model.resize_token_embeddings(new_num_tokens=len(tokenizer))
-    elif "bart" in args["model_name"]:
-        model = BartForConditionalGeneration.from_pretrained(args["model_checkpoint"])
-        tokenizer = BartTokenizer.from_pretrained(
-            args["model_checkpoint"],
-            bos_token="[bos]",
-            eos_token="[eos]",
-            sep_token="[sep]",
-        )
-        model.resize_token_embeddings(new_num_tokens=len(tokenizer))
+    model = AutoModelForSeq2SeqLM.from_pretrained(args["model_checkpoint"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        args["model_checkpoint"],
+        bos_token="[bos]",
+        eos_token="[eos]",
+        sep_token="[sep]",
+    )
+    model.resize_token_embeddings(new_num_tokens=len(tokenizer))
 
     task = DST_Seq2Seq(args, tokenizer, model)
 
@@ -109,7 +86,6 @@ def train(args, *more):
         fewshot_loader_test,
     ) = prepare_data(args, task.tokenizer)
 
-    # save model path
     save_path = os.path.join(args["saving_dir"], args["model_name"])
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -129,9 +105,9 @@ def train(args, *more):
             )
         ],
         gpus=args["GPU"],
-        deterministic=True,
+        # deterministic=True,
         num_nodes=1,
-        # precision=16,
+        precision=16,
         accelerator="ddp",
     )
 
@@ -218,7 +194,7 @@ def evaluate_model(
     return predictions
 
 
-def fine_tune(args, *more):
+def fine_tune(args):
     args = vars(args)
     seed_everything(args["seed"])
     domains = ["hotel", "train", "restaurant", "attraction", "taxi"]
@@ -226,25 +202,15 @@ def fine_tune(args, *more):
         if domain in args["model_checkpoint"]:
             args["only_domain"] = domain
     assert args["only_domain"] != "none"
-    # args["model_checkpoint"] = os.path.join(args["saving_dir"],args["model_name"])
     print(args)
 
-    if "t5" in args["model_name"]:
-        model = T5ForConditionalGeneration.from_pretrained(args["model_checkpoint"])
-        tokenizer = T5Tokenizer.from_pretrained(
-            args["model_checkpoint"],
-            bos_token="[bos]",
-            eos_token="[eos]",
-            sep_token="[sep]",
-        )
-    elif "bart" in args["model_name"]:
-        model = BartForConditionalGeneration.from_pretrained(args["model_checkpoint"])
-        tokenizer = BartTokenizer.from_pretrained(
-            args["model_checkpoint"],
-            bos_token="[bos]",
-            eos_token="[eos]",
-            sep_token="[sep]",
-        )
+    model = AutoModelForSeq2SeqLM.from_pretrained(args["model_checkpoint"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        args["model_checkpoint"],
+        bos_token="[bos]",
+        eos_token="[eos]",
+        sep_token="[sep]",
+    )
 
     task = DST_Seq2Seq(args, tokenizer, model)
     (
@@ -273,7 +239,7 @@ def fine_tune(args, *more):
         gpus=args["GPU"],
         deterministic=True,
         num_nodes=1,
-        accelerator="ddp",
+        accelerator="dp",
     )
 
     trainer.fit(task, train_loader, val_loader)
